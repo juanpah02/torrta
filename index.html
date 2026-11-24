@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Torreta Naval</title>
+<style>
+:root{
+  --bg:#eef1f4; --card:#fff; --ink:#18212b; --muted:#5b6672; --line:#d5dbe2;
+  --accent:#1f6f8b; --ok:#2f9e44; --bad:#c92a2a; --laser:#e0241b;
+  --f-body:-apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif; --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1418; --card:#1a2128; --ink:#e8edf1; --muted:#9aa6b2; --line:#2c3642; --accent:#5fb7d4; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1418; --card:#1a2128; --ink:#e8edf1; --muted:#9aa6b2; --line:#2c3642; --accent:#5fb7d4; color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.4}
+.wrap{max-width:460px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:grid;gap:14px}
+h1{margin:4px 0 0;font-size:1.5rem}
+.card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px}
+button{font:inherit;cursor:pointer;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:14px 16px;font-weight:600;touch-action:manipulation}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.45}
+.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.conn{display:flex;align-items:center;gap:10px;font-weight:600}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--bad);flex:none}
+.dot.on{background:var(--ok)}
+.row{display:flex;gap:10px}
+.row>*{flex:1;min-width:0}
+.coord{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px}
+.coord .lab{font-size:1.6rem;font-weight:800;width:36px;text-align:center}
+.stepper{display:grid;grid-template-columns:56px minmax(0,1fr) 56px;gap:8px;min-width:0}
+.stepper button{padding:0;font-size:1.6rem;height:56px}
+.stepper input{min-width:0;width:100%;height:56px;text-align:center;font:700 1.8rem var(--f-mono);border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+.cell{font:800 2.2rem var(--f-mono);text-align:center;letter-spacing:.04em}
+.cell small{display:block;font:500 .85rem var(--f-body);color:var(--muted);letter-spacing:0}
+#fire{background:var(--laser);border-color:var(--laser);color:#fff;font-size:1.3rem;padding:18px}
+#msg{min-height:1.4em;text-align:center;font-size:.95rem}
+.err{color:var(--bad)}
+.muted{color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Torreta Naval</h1>
+
+  <section class="card">
+    <div class="conn"><span class="dot" id="dot"></span><span id="connTxt">Desconectado</span></div>
+    <div class="row">
+      <button class="primary" id="btnConn" type="button">Conectar</button>
+      <button id="btnDisc" type="button" disabled>Desconectar</button>
+    </div>
+    <p class="muted" id="nobt" hidden>Este navegador no tiene Bluetooth. En iPhone abre esta página con la app <b>Bluefy</b>.</p>
+  </section>
+
+  <section class="card">
+    <div class="coord">
+      <span class="lab">X</span>
+      <div class="stepper"><button type="button" data-d="x,-1" aria-label="X menos uno">−</button><input id="inX" type="number" inputmode="numeric" min="1" max="20" value="1" aria-label="X, columna de 1 a 20"><button type="button" data-d="x,1" aria-label="X más uno">+</button></div>
+      <span class="lab">Y</span>
+      <div class="stepper"><button type="button" data-d="y,-1" aria-label="Y menos uno">−</button><input id="inY" type="number" inputmode="numeric" min="1" max="20" value="1" aria-label="Y, fila de 1 a 20"><button type="button" data-d="y,1" aria-label="Y más uno">+</button></div>
+    </div>
+    <div class="cell" id="cell">A1<small>casilla</small></div>
+    <button id="fire" type="button" disabled>Disparar</button>
+    <div class="row">
+      <button id="btnOff" type="button" disabled>Apagar láser</button>
+    </div>
+    <p id="msg" aria-live="polite"></p>
+  </section>
+
+  <p class="muted">X es la columna (1 = A … 20 = T) e Y es la fila (1 … 20). La torreta mueve primero X, espera 2 s, mueve Y y prende el láser.</p>
+</div>
+
+<script>
+// Tabla medida en el tablero (ángulos del programa del Arduino). X servo = p − 38, Y servo = 140 − e.
+const TABLA={"A1":{"p":110.5,"e":-30},"B1":{"p":109,"e":-30},"C1":{"p":106.3,"e":-31.9},"D1":{"p":104.14,"e":-32.39},"E1":{"p":101.69,"e":-32.01},"F1":{"p":99,"e":-31.93},"G1":{"p":96.63,"e":-31.89},"H1":{"p":94.39,"e":-31.86},"I1":{"p":92.23,"e":-31.85},"J1":{"p":90.15,"e":-31.84},"K1":{"p":88.13,"e":-31.83},"L1":{"p":84.15,"e":-31.82},"M1":{"p":81.95,"e":-31.82},"N1":{"p":79.58,"e":-31.82},"O1":{"p":78.23,"e":-31.81},"P1":{"p":74.56,"e":-31.81},"Q1":{"p":72.6,"e":-32.81},"R1":{"p":70.4,"e":-31.9},"S1":{"p":68.22,"e":-31.02},"T1":{"p":66.07,"e":-30.4},"A2":{"p":110.48,"e":-28.52},"B2":{"p":108.63,"e":-29.16},"C2":{"p":106.67,"e":-30.64},"D2":{"p":103.72,"e":-30.64},"E2":{"p":101.01,"e":-30.64},"F2":{"p":101.2,"e":-30},"G2":{"p":97.28,"e":-30},"H2":{"p":94.65,"e":-31.71},"I2":{"p":92.1,"e":-32},"J2":{"p":89.55,"e":-31.22},"K2":{"p":86.97,"e":-31.22},"L2":{"p":84.2,"e":-30.99},"M2":{"p":81.47,"e":-30.99},"N2":{"p":79.9,"e":-30.8},"O2":{"p":76.83,"e":-28.68},"P2":{"p":76.01,"e":-30.04},"Q2":{"p":73.31,"e":-30.25},"R2":{"p":70.26,"e":-30.25},"S2":{"p":70.26,"e":-30.25},"T2":{"p":66.6,"e":-30.48},"A3":{"p":110.77,"e":-27.67},"B3":{"p":108.73,"e":-29.15},"C3":{"p":106.59,"e":-29.15},"D3":{"p":106.59,"e":-29.15},"E3":{"p":101.6,"e":-30.4},"F3":{"p":100.08,"e":-30.4},"G3":{"p":97.67,"e":-30.4},"H3":{"p":95.1,"e":-30.3},"I3":{"p":95.1,"e":-30.3},"J3":{"p":92.6,"e":-30.3},"K3":{"p":90.63,"e":-30.3},"L3":{"p":88.29,"e":-30.3},"M3":{"p":82.7,"e":-30.07},"N3":{"p":82.7,"e":-30.07},"O3":{"p":80.74,"e":-30.07},"P3":{"p":75.9,"e":-29.5},"Q3":{"p":74.05,"e":-29.5},"R3":{"p":71.73,"e":-29.5},"S3":{"p":68.6,"e":-28.19},"T3":{"p":66.98,"e":-28.68},"A4":{"p":111.59,"e":-26.12},"B4":{"p":109.69,"e":-27.34},"C4":{"p":107.74,"e":-27.82},"D4":{"p":105.77,"e":-27.18},"E4":{"p":102.43,"e":-27.36},"F4":{"p":99.96,"e":-28.5},"G4":{"p":98.56,"e":-28.5},"H4":{"p":96.41,"e":-28.5},"I4":{"p":93.4,"e":-28.87},"J4":{"p":90.97,"e":-27.98},"K4":{"p":88.52,"e":-28.82},"L4":{"p":86.91,"e":-28.86},"M4":{"p":84.31,"e":-28.86},"N4":{"p":80,"e":-28.7},"O4":{"p":78.18,"e":-27.53},"P4":{"p":75.47,"e":-28.15},"Q4":{"p":75.47,"e":-28.15},"R4":{"p":73.85,"e":-28.15},"S4":{"p":69.8,"e":-26.62},"T4":{"p":67.38,"e":-26.62},"A5":{"p":112.1,"e":-24.45},"B5":{"p":110.2,"e":-25.7},"C5":{"p":107.19,"e":-26.12},"D5":{"p":104.85,"e":-26.37},"E5":{"p":103.41,"e":-26.64},"F5":{"p":101.2,"e":-26.64},"G5":{"p":99.01,"e":-26.94},"H5":{"p":96.8,"e":-27.2},"I5":{"p":93.8,"e":-27.33},"J5":{"p":91.9,"e":-27.33},"K5":{"p":88.5,"e":-27.4},"L5":{"p":85.96,"e":-27.42},"M5":{"p":83.32,"e":-27.36},"N5":{"p":81.59,"e":-27.36},"O5":{"p":80.2,"e":-26},"P5":{"p":78,"e":-27.69},"Q5":{"p":75.99,"e":-25.78},"R5":{"p":71.99,"e":-25.78},"S5":{"p":72.87,"e":-25.78},"T5":{"p":67.7,"e":-25.6},"A6":{"p":112.3,"e":-22.91},"B6":{"p":110.37,"e":-22.91},"C6":{"p":108.3,"e":-24.37},"D6":{"p":106.11,"e":-24.79},"E6":{"p":103.98,"e":-24.79},"F6":{"p":101.8,"e":-24.79},"G6":{"p":98.6,"e":-24.1},"H6":{"p":97.25,"e":-25.08},"I6":{"p":93.8,"e":-25.7},"J6":{"p":91.8,"e":-25.79},"K6":{"p":88.76,"e":-25.84},"L6":{"p":87.16,"e":-25.84},"M6":{"p":82.79,"e":-25.79},"N6":{"p":80.16,"e":-25.64},"O6":{"p":78.75,"e":-25.41},"P6":{"p":76.56,"e":-25.3},"Q6":{"p":74.4,"e":-23.99},"R6":{"p":72.29,"e":-24.54},"S6":{"p":69.86,"e":-23.34},"T6":{"p":68.13,"e":-23.88},"A7":{"p":112.88,"e":-20.97},"B7":{"p":109.9,"e":-23.11},"C7":{"p":108.63,"e":-22.82},"D7":{"p":106.57,"e":-22.82},"E7":{"p":103.4,"e":-23.3},"F7":{"p":101.01,"e":-23.51},"G7":{"p":98.63,"e":-23.7},"H7":{"p":97.18,"e":-23.7},"I7":{"p":94.76,"e":-23.7},"J7":{"p":94.76,"e":-23.7},"K7":{"p":92.28,"e":-23.87},"L7":{"p":87.7,"e":-24.1},"M7":{"p":84.77,"e":-24.11},"N7":{"p":82.14,"e":-24.11},"O7":{"p":82.14,"e":-24.07},"P7":{"p":76.7,"e":-23.6},"Q7":{"p":74.04,"e":-23.24},"R7":{"p":71.56,"e":-22.93},"S7":{"p":70.12,"e":-22.93},"T7":{"p":66.89,"e":-21.37},"A8":{"p":113.2,"e":-19.41},"B8":{"p":110.16,"e":-21.68},"C8":{"p":107.95,"e":-20.24},"D8":{"p":105.74,"e":-21.3},"E8":{"p":103.4,"e":-21.61},"F8":{"p":101.05,"e":-22.84},"G8":{"p":99.72,"e":-22.84},"H8":{"p":96.6,"e":-22.29},"I8":{"p":94.21,"e":-22.31},"J8":{"p":91.96,"e":-22.36},"K8":{"p":89.47,"e":-22.4},"L8":{"p":87.73,"e":-22.4},"M8":{"p":85.14,"e":-22.4},"N8":{"p":81.6,"e":-22.31},"O8":{"p":79.1,"e":-22.15},"P8":{"p":77.37,"e":-22.15},"Q8":{"p":74.86,"e":-22.15},"R8":{"p":72.4,"e":-21.43},"S8":{"p":72.4,"e":-21.43},"T8":{"p":68.1,"e":-21.43},"A9":{"p":113.21,"e":-18.86},"B9":{"p":111.11,"e":-18.86},"C9":{"p":108.96,"e":-19.27},"D9":{"p":108.96,"e":-19.27},"E9":{"p":103.9,"e":-19.72},"F9":{"p":102.31,"e":-19.72},"G9":{"p":99.1,"e":-20.43},"H9":{"p":97.58,"e":-20.43},"I9":{"p":95.25,"e":-20.55},"J9":{"p":92.87,"e":-20.6},"K9":{"p":90.42,"e":-20.6},"L9":{"p":86.93,"e":-20.68},"M9":{"p":85.23,"e":-20.68},"N9":{"p":82.66,"e":-20.68},"O9":{"p":80.13,"e":-20.65},"P9":{"p":76.67,"e":-20.32},"Q9":{"p":74.08,"e":-19.1},"R9":{"p":72.63,"e":-19.67},"S9":{"p":70.51,"e":-19.49},"T9":{"p":68.1,"e":-17.24},"A10":{"p":113.5,"e":-16.2},"B10":{"p":110.61,"e":-17.44},"C10":{"p":110.61,"e":-17.44},"D10":{"p":106.6,"e":-17.87},"E10":{"p":104.17,"e":-17.87},"F10":{"p":101.8,"e":-18.3},"G10":{"p":100.27,"e":-18.3},"H10":{"p":97,"e":-18.6},"I10":{"p":94.49,"e":-18.64},"J10":{"p":92.99,"e":-18.73},"K10":{"p":90.56,"e":-18.73},"L10":{"p":85.98,"e":-17.81},"M10":{"p":85.98,"e":-17.81},"N10":{"p":82.86,"e":-17.81},"O10":{"p":80.24,"e":-17.81},"P10":{"p":77.6,"e":-18.66},"Q10":{"p":74.1,"e":-18.02},"R10":{"p":72.58,"e":-18.02},"S10":{"p":70.3,"e":-16.5},"T10":{"p":70.3,"e":-16.5},"A11":{"p":113.95,"e":-14.48},"B11":{"p":111.95,"e":-15.52},"C11":{"p":109.01,"e":-14.79},"D11":{"p":106.7,"e":-15.89},"E11":{"p":105.31,"e":-15.89},"F11":{"p":102.97,"e":-16.16},"G11":{"p":99.6,"e":-15.49},"H11":{"p":97.02,"e":-16.52},"I11":{"p":94.51,"e":-16.67},"J11":{"p":93.05,"e":-16.67},"K11":{"p":90.61,"e":-16.67},"L11":{"p":87.99,"e":-16.67},"M11":{"p":85.55,"e":-16.7},"N11":{"p":82,"e":-16.46},"O11":{"p":79.29,"e":-16.37},"P11":{"p":77.62,"e":-16.37},"Q11":{"p":75.1,"e":-15.09},"R11":{"p":75.1,"e":-15.09},"S11":{"p":70.8,"e":-14.3},"T11":{"p":68.48,"e":-14.87},"A12":{"p":114.27,"e":-12.39},"B12":{"p":114.27,"e":-12.39},"C12":{"p":109.39,"e":-13.51},"D12":{"p":106.88,"e":-13.85},"E12":{"p":104.55,"e":-13.06},"F12":{"p":102.14,"e":-13.09},"G12":{"p":100.61,"e":-14.14},"H12":{"p":98.2,"e":-14.14},"I12":{"p":95.76,"e":-14.39},"J12":{"p":92.34,"e":-13.56},"K12":{"p":90.73,"e":-13.56},"L12":{"p":88.23,"e":-13.56},"M12":{"p":85.64,"e":-14.46},"N12":{"p":83,"e":-14.3},"O12":{"p":79.4,"e":-13.21},"P12":{"p":79.4,"e":-13.21},"Q12":{"p":77.76,"e":-13.21},"R12":{"p":75.61,"e":-13.21},"S12":{"p":71.18,"e":-13.21},"T12":{"p":68.6,"e":-12.94},"A13":{"p":113.81,"e":-11.15},"B13":{"p":111.69,"e":-10.32},"C13":{"p":109.29,"e":-11.43},"D13":{"p":106.89,"e":-11.69},"E13":{"p":104.53,"e":-11.79},"F13":{"p":101.17,"e":-11.9},"G13":{"p":101.17,"e":-11.9},"H13":{"p":97.51,"e":-12.08},"I13":{"p":94.93,"e":-12.23},"J13":{"p":93.35,"e":-12.19},"K13":{"p":90.96,"e":-12.19},"L13":{"p":90.96,"e":-12.19},"M13":{"p":86.17,"e":-12.16},"N13":{"p":83.41,"e":-12.16},"O13":{"p":79.8,"e":-11.9},"P13":{"p":78.38,"e":-11.7},"Q13":{"p":76.17,"e":-11.7},"R13":{"p":72.78,"e":-10.52},"S13":{"p":72.78,"e":-10.52},"T13":{"p":71.05,"e":-10.52},"A14":{"p":114.59,"e":-9.27},"B14":{"p":112.52,"e":-9.27},"C14":{"p":112.52,"e":-9.27},"D14":{"p":110.32,"e":-9.27},"E14":{"p":106.1,"e":-9.7},"F14":{"p":102.55,"e":-9.82},"G14":{"p":101.12,"e":-9.82},"H14":{"p":98.72,"e":-9.82},"I14":{"p":95.26,"e":-9.82},"J14":{"p":95.26,"e":-10.01},"K14":{"p":90.6,"e":-10},"L14":{"p":90.6,"e":-10},"M14":{"p":89,"e":-10},"N14":{"p":83,"e":-9.86},"O14":{"p":81.07,"e":-9.86},"P14":{"p":78.6,"e":-9.56},"Q14":{"p":76.19,"e":-9.56},"R14":{"p":76.19,"e":-9.56},"S14":{"p":71.9,"e":-8.96},"T14":{"p":69.41,"e":-8.96},"A15":{"p":115.15,"e":-6.32},"B15":{"p":113.2,"e":-6.32},"C15":{"p":110.28,"e":-7.25},"D15":{"p":107.9,"e":-7.44},"E15":{"p":106.39,"e":-7.57},"F15":{"p":102.96,"e":-7.66},"G15":{"p":101.48,"e":-7.66},"H15":{"p":98.13,"e":-7.75},"I15":{"p":96.58,"e":-7.75},"J15":{"p":93.31,"e":-7.79},"K15":{"p":91.73,"e":-7.79},"L15":{"p":88.45,"e":-7.76},"M15":{"p":85.84,"e":-7.71},"N15":{"p":83.98,"e":-7.71},"O15":{"p":80.41,"e":-7.53},"P15":{"p":78.79,"e":-7.53},"Q15":{"p":76.46,"e":-7.53},"R15":{"p":73.2,"e":-7.1},"S15":{"p":71.6,"e":-6.9},"T15":{"p":69.22,"e":-6.92},"A16":{"p":115.5,"e":-4},"B16":{"p":115.5,"e":-4},"C16":{"p":110.6,"e":-5},"D16":{"p":110.6,"e":-5},"E16":{"p":105.9,"e":-5.3},"F16":{"p":104.26,"e":-5.38},"G16":{"p":101.89,"e":-5.43},"H16":{"p":99.41,"e":-5.43},"I16":{"p":96.95,"e":-5.43},"J16":{"p":94.44,"e":-5.46},"K16":{"p":93.44,"e":-5.46},"L16":{"p":89.53,"e":-5.42},"M16":{"p":89.53,"e":-5.42},"N16":{"p":83.5,"e":-5.31},"O16":{"p":79.54,"e":-5.21},"P16":{"p":79.54,"e":-5.21},"Q16":{"p":78.79,"e":-5.21},"R16":{"p":76.52,"e":-5.21},"S16":{"p":72,"e":-5},"T16":{"p":69.4,"e":-4.9},"A17":{"p":116.1,"e":-1.75},"B17":{"p":114.16,"e":-1.75},"C17":{"p":110.9,"e":-2.73},"D17":{"p":108.55,"e":-2.93},"E17":{"p":107.06,"e":-3.03},"F17":{"p":104.74,"e":-3.03},"G17":{"p":101.35,"e":-3.12},"H17":{"p":99.79,"e":-3.12},"I17":{"p":96.39,"e":-3.13},"J17":{"p":94.83,"e":-3.13},"K17":{"p":91.46,"e":-3.1},"L17":{"p":89.81,"e":-3.1},"M17":{"p":89.81,"e":-3.1},"N17":{"p":83.8,"e":-3},"O17":{"p":81.76,"e":-2.97},"P17":{"p":79.41,"e":-2.97},"Q17":{"p":76.1,"e":-2.78},"R17":{"p":74.57,"e":-2.69},"S17":{"p":74.57,"e":-2.69},"T17":{"p":72.02,"e":-2.69},"A18":{"p":116.36,"e":-0.54},"B18":{"p":113.29,"e":-0.53},"C18":{"p":111.89,"e":-0.53},"D18":{"p":109.7,"e":-0.66},"E18":{"p":106.45,"e":-0.78},"F18":{"p":104.97,"e":-0.78},"G18":{"p":100.57,"e":-0.82},"H18":{"p":99.92,"e":-0.82},"I18":{"p":96.55,"e":-0.82},"J18":{"p":94,"e":-0.78},"K18":{"p":91.45,"e":-0.75},"L18":{"p":88.98,"e":-0.72},"M18":{"p":86.51,"e":-0.68},"N18":{"p":84.7,"e":-0.63},"O18":{"p":82.11,"e":-0.58},"P18":{"p":78.59,"e":-0.53},"Q18":{"p":75.98,"e":-0.47},"R18":{"p":73.6,"e":-0.4},"S18":{"p":72.37,"e":-0.35},"T18":{"p":70.11,"e":0.69},"A19":{"p":116.54,"e":2.41},"B19":{"p":114.41,"e":1.61},"C19":{"p":111.27,"e":1.55},"D19":{"p":108.89,"e":2.55},"E19":{"p":106.47,"e":1.62},"F19":{"p":105.05,"e":1.62},"G19":{"p":100.6,"e":1.57},"H19":{"p":99.99,"e":1.58},"I19":{"p":97.59,"e":2.61},"J19":{"p":94.07,"e":2.75},"K19":{"p":92.42,"e":2.75},"L19":{"p":89.93,"e":2.75},"M19":{"p":87.39,"e":2.75},"N19":{"p":84.83,"e":1.9},"O19":{"p":82.21,"e":1.9},"P19":{"p":79.54,"e":1.99},"Q19":{"p":76.96,"e":1.99},"R19":{"p":74.52,"e":2.99},"S19":{"p":74.52,"e":2.99},"T19":{"p":72.21,"e":2.99},"A20":{"p":116.79,"e":5.71},"B20":{"p":116.79,"e":5.71},"C20":{"p":114.67,"e":5.71},"D20":{"p":109.5,"e":4.18},"E20":{"p":106.82,"e":5.14},"F20":{"p":105.33,"e":4.23},"G20":{"p":100.9,"e":5.2},"H20":{"p":98.25,"e":5.36},"I20":{"p":96.68,"e":4.54},"J20":{"p":94.15,"e":4.56},"K20":{"p":91.62,"e":4.6},"L20":{"p":90.06,"e":4.62},"M20":{"p":87.57,"e":4.61},"N20":{"p":84.99,"e":4.61},"O20":{"p":84.99,"e":4.61},"P20":{"p":79.06,"e":5.55},"Q20":{"p":77.24,"e":5.55},"R20":{"p":74.87,"e":5.55},"S20":{"p":72.67,"e":5.55},"T20":{"p":70.34,"e":4.9}};
+const COLS='ABCDEFGHIJKLMNOPQRST';
+const SVC=0xffe0, CHR=0xffe1;               // módulo BLE "HC-05": servicio FFE0, característica FFE1
+const VEL=0.5, ACCEL=0.012, PAUSA=2000;     // velocidad y aceleración del Arduino; pausa entre X e Y
+const $=id=>document.getElementById(id);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const enc=new TextEncoder();
+let dev=null, chr=null, busy=false;
+// última posición mandada (la torreta no contesta por Bluetooth)
+let pos=null; try{ pos=JSON.parse(localStorage.getItem('ip-pos')); }catch(e){}
+function savePos(){ try{ localStorage.setItem('ip-pos',JSON.stringify(pos)); }catch(e){} }
+const travel=d=>d/VEL*15+(VEL/ACCEL)*15+300;   // ms para recorrer d grados con arranque y frenado suaves
+
+function msg(t,err){ $('msg').textContent=t; $('msg').className=err?'err':''; }
+function setConn(on){
+  $('dot').classList.toggle('on',on);
+  $('connTxt').textContent=on?('Conectado · '+(dev&&dev.name||'HC-05')):'Desconectado';
+  $('btnConn').disabled=on||!navigator.bluetooth; $('btnDisc').disabled=!on;
+  $('fire').disabled=!on||busy; $('btnOff').disabled=!on;
+}
+if(!navigator.bluetooth){ $('nobt').hidden=false; }
+setConn(false);
+
+// envíos en fila (Bluetooth no acepta dos escrituras a la vez)
+let q=Promise.resolve();
+function send(cmd){
+  const job=q.then(async()=>{
+    if(!chr) throw new Error('sin conexión');
+    const data=enc.encode(cmd+'\n');
+    if(chr.writeValueWithResponse) await chr.writeValueWithResponse(data); else await chr.writeValue(data);
+  });
+  q=job.catch(()=>{}); return job;
+}
+
+$('btnConn').onclick=async()=>{
+  try{
+    dev=await navigator.bluetooth.requestDevice({filters:[{services:[SVC]},{namePrefix:'HC'}],optionalServices:[SVC]});
+    dev.addEventListener('gattserverdisconnected',()=>{ chr=null; setConn(false); msg('Se desconectó el Bluetooth.',true); });
+    msg('Conectando…');
+    const srv=await dev.gatt.connect();
+    chr=await (await srv.getPrimaryService(SVC)).getCharacteristic(CHR);
+    setConn(true); msg('Listo. Elige X e Y y pulsa Disparar.');
+    await send('V'+VEL);
+  }catch(e){ chr=null; setConn(false); if(e.name!=='NotFoundError') msg('No se pudo conectar: '+e.message,true); }
+};
+$('btnDisc').onclick=()=>{ try{ if(dev&&dev.gatt.connected) dev.gatt.disconnect(); }catch(e){} chr=null; setConn(false); msg('Desconectado.'); };
+
+// X e Y de 1 a 20 → casilla con letra (1 = A … 20 = T)
+function val(id){ const n=parseInt($(id).value,10); return isFinite(n)?Math.min(20,Math.max(1,n)):null; }
+function showCell(){
+  const x=val('inX'), y=val('inY');
+  $('cell').innerHTML=(x&&y?COLS[x-1]+y:'–')+'<small>casilla</small>';
+}
+document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{
+  const [ax,d]=b.dataset.d.split(','); const id=ax==='x'?'inX':'inY';
+  $(id).value=Math.min(20,Math.max(1,(val(id)||1)+(+d))); showCell();
+});
+['inX','inY'].forEach(id=>{
+  $(id).addEventListener('input',showCell);
+  $(id).addEventListener('change',()=>{ const v=val(id); $(id).value=v||1; showCell(); });
+});
+
+$('fire').onclick=async()=>{
+  const x=val('inX'), y=val('inY');
+  if(!x||!y){ msg('X e Y deben ser números del 1 al 20.',true); return; }
+  const k=COLS[x-1]+y, t=TABLA[k];
+  if(!t){ msg('La casilla '+k+' no está en la tabla.',true); return; }
+  busy=true; setConn(!!chr);
+  try{
+    await send('L0');
+    // 1) eje X
+    const dp=pos?Math.abs(t.p-pos.p):120;
+    msg(k+': moviendo X…');
+    await send('P'+t.p.toFixed(1));
+    await sleep(travel(dp));
+    pos=Object.assign({},pos||{},{p:t.p}); savePos();
+    // 2) pausa
+    msg(k+': esperando…'); await sleep(PAUSA);
+    // 3) eje Y
+    const de=(pos.e!==undefined)?Math.abs(t.e-pos.e):120;
+    msg(k+': moviendo Y…');
+    await send('T'+t.e.toFixed(1));
+    await sleep(travel(de));
+    pos.e=t.e; savePos();
+    // 4) láser
+    await send('L1');
+    msg('🎯 Disparo en '+k);
+  }catch(e){ msg('No hay conexión con la torreta.',true); }
+  busy=false; setConn(!!chr);
+};
+$('btnOff').onclick=()=>send('L0').then(()=>msg('Láser apagado.')).catch(()=>msg('No hay conexión.',true));
+showCell();
+</script>
+</body>
+</html>
